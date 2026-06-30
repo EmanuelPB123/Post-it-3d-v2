@@ -22,6 +22,11 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;overflow:hidden;height:100%;background:#000;}
   a-scene{position:fixed;inset:0;}
+  /* Defensive overrides: make sure the raw camera <video> and the WebGL
+     <canvas> AR.js creates always sit full-screen and on top of the black
+     body background, no matter where the library appends them in the DOM. */
+  video{position:fixed!important;top:0;left:0;width:100%!important;height:100%!important;object-fit:cover;z-index:0!important;background:#000;}
+  canvas.a-canvas{position:fixed!important;top:0;left:0;width:100%!important;height:100%!important;z-index:1!important;background:transparent!important;}
 
   /* ---------- top status bar ---------- */
   .status-bar{
@@ -191,7 +196,7 @@
   <!-- CAMERA ERROR SCREEN -->
   <div id="error-screen" class="full-screen hidden">
     <div class="logo-mark" style="background:var(--danger);"></div>
-    <h1>No pudimos acceder a la cámara</h1>
+    <h1 id="error-title">No pudimos acceder a la cámara</h1>
     <p id="error-msg">Revisá que le diste permiso de cámara a esta página y que ningún otro programa la esté usando.</p>
     <button class="btn btn-main start-btn" onclick="app.start()">Reintentar</button>
   </div>
@@ -319,28 +324,46 @@
 
     start: async function(){
       document.getElementById('error-screen').classList.add('hidden');
-      // Ask for camera permission ourselves first so we get a clear error message,
-      // AR.js's own getUserMedia call can fail silently on some browsers.
-      try {
-        const test = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: this.settings.facingMode }
-        });
-        test.getTracks().forEach(t => t.stop());
-      } catch(err){
-        document.getElementById('start-screen').classList.add('hidden');
-        document.getElementById('error-screen').classList.remove('hidden');
-        document.getElementById('error-msg').textContent =
-          err.name === 'NotAllowedError'
-            ? 'Le negaste el permiso de cámara a esta página. Activalo en la configuración del navegador y volvé a intentar.'
-            : 'No encontramos una cámara disponible, o ya está siendo usada por otra app.';
-        return;
-      }
-
       document.getElementById('start-screen').classList.add('hidden');
       document.getElementById('status-bar').style.display = 'flex';
       document.getElementById('scan-hint').style.display = 'block';
+      document.getElementById('status-text').textContent = 'Iniciando cámara…';
+
+      // We let AR.js itself request the camera (only one getUserMedia call).
+      // Asking for permission ourselves first and then handing off to AR.js
+      // is a common source of a "frozen black video" on phones, because the
+      // camera hardware doesn't always release in time for the second request.
       this.buildScene();
-      this.applySettingsUI();
+      this.watchVideo();
+    },
+
+    // Polls the real <video> element AR.js creates. If after a few seconds
+    // it never receives actual frames (videoWidth stays 0), something failed
+    // silently (permission denied without a thrown error, camera in use by
+    // another app, unsupported resolution, etc) — show a clear message
+    // instead of leaving the screen dark with no explanation.
+    watchVideo: function(){
+      clearInterval(this._watchdog);
+      let elapsed = 0;
+      this._watchdog = setInterval(() => {
+        const video = document.querySelector('video');
+        elapsed += 500;
+        if(video && video.videoWidth > 0){
+          clearInterval(this._watchdog);
+          return;
+        }
+        if(elapsed >= 6000){
+          clearInterval(this._watchdog);
+          if(!this.markerVisible){
+            document.getElementById('error-screen').classList.remove('hidden');
+            document.getElementById('error-title').textContent = 'La cámara no muestra imagen';
+            document.getElementById('error-msg').textContent =
+              video
+                ? 'El navegador abrió la cámara pero no llegan imágenes. Cerrá otras apps/pestañas que la estén usando, o probá bajar la calidad en Ajustes ⚙️ y volver a intentar.'
+                : 'No se detectó ninguna cámara activa. Si tu navegador te pidió permiso, asegurate de aceptar "Permitir". En iPhone, esto solo funciona en Safari (no en Chrome/Instagram in-app).';
+          }
+        }
+      }, 500);
     },
 
     buildScene: function(){
@@ -351,7 +374,6 @@
       const scene = document.createElement('a-scene');
       scene.setAttribute('embedded', '');
       scene.setAttribute('vr-mode-ui', 'enabled: false');
-      scene.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: medium;');
       scene.setAttribute('arjs',
         `sourceType: webcam; ` +
         `sourceWidth:${q.w}; sourceHeight:${q.h}; ` +
@@ -405,8 +427,10 @@
       });
 
       scene.addEventListener('camera-error', () => {
+        clearInterval(this._watchdog);
         document.getElementById('error-screen').classList.remove('hidden');
-        document.getElementById('error-msg').textContent = 'Se perdió la conexión con la cámara. Probá reiniciar la página.';
+        document.getElementById('error-title').textContent = 'No pudimos acceder a la cámara';
+        document.getElementById('error-msg').textContent = 'Se perdió la conexión con la cámara, o el navegador no te dejó usarla. Revisá los permisos y reintentá.';
       });
     },
 
@@ -448,6 +472,7 @@
     },
 
     onMarkerFound: function(){
+      clearInterval(this._watchdog);
       this.markerVisible = true;
       document.getElementById('scan-hint').style.display = 'none';
       const dot = document.getElementById('status-dot');
@@ -491,6 +516,7 @@
       this.persistSettings();
       this.showToast('Reiniciando cámara en calidad ' + QUALITY_PRESETS[q].label.toLowerCase() + '…');
       this.buildScene();
+      this.watchVideo();
       this.applySettingsUI();
     },
     setCamera: function(c){
@@ -498,6 +524,7 @@
       this.settings.facingMode = c;
       this.persistSettings();
       this.buildScene();
+      this.watchVideo();
       this.applySettingsUI();
     },
     clearAll: function(){
@@ -662,6 +689,7 @@
     // ---------------- init ----------------
 
     init: function(){
+      this.applySettingsUI();
       // build color grid
       const grid = document.getElementById('grid');
       COLORS.forEach(c=>{
