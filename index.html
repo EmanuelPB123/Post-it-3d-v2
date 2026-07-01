@@ -154,11 +154,12 @@
             const size = this.estimateSize(data.text);
 
             const container = document.createElement('a-entity');
-            container.setAttribute('class', 'nota-virtual clickable');
+            container.setAttribute('class', 'nota-virtual');
             container.setAttribute('position', data.pos);
             container.setAttribute('look-at', '[camera]');
 
             const bg = document.createElement('a-plane');
+            bg.setAttribute('class', 'clickable');
             bg.setAttribute('width', size.width);
             bg.setAttribute('height', size.height);
             bg.setAttribute('color', data.color);
@@ -173,7 +174,8 @@
             txt.setAttribute('wrap-count', this.WRAP_COUNT);
             txt.setAttribute('position', '0 0 0.01');
 
-            container.addEventListener('mousedown', () => this.select(data.id));
+            // El plano de fondo es el que recibe el rayo del cursor (raycaster objects: .clickable)
+            bg.addEventListener('click', () => this.select(data.id));
 
             container.appendChild(bg);
             container.appendChild(txt);
