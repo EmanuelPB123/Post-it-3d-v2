@@ -1,727 +1,207 @@
 <!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Post-it AR Pro 2.0 — Máximo Alcance</title>
-<script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-<style>
-  :root{
-    --paper:#FFF6D8;
-    --ink:#1C1B17;
-    --accent:#FF7A45;
-    --accent-dark:#D8551F;
-    --panel:#211F1A;
-    --panel-line:rgba(255,255,255,0.12);
-    --ok:#6CCB7A;
-    --warn:#FF7A45;
-    --danger:#E5484D;
-    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
-  }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;overflow:hidden;height:100%;background:#000;}
-  a-scene{position:fixed;inset:0;}
-  /* Defensive overrides: make sure the raw camera <video> and the WebGL
-     <canvas> AR.js creates always sit full-screen and on top of the black
-     body background, no matter where the library appends them in the DOM. */
-  video{position:fixed!important;top:0;left:0;width:100%!important;height:100%!important;object-fit:cover;z-index:0!important;background:#000;}
-  canvas.a-canvas{position:fixed!important;top:0;left:0;width:100%!important;height:100%!important;z-index:1!important;background:transparent!important;}
+<html>
+  <head>
+    <title>Post-it AR Pro - Máximo Alcance</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <script src="https://unpkg.com/aframe-look-at-component@0.8.0/dist/aframe-look-at-component.min.js"></script>
+    <style>
+      .ui-overlay { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; }
+      .btn { padding: 15px 25px; background: #2196F3; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; pointer-events: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.3); font-family: sans-serif; }
+      .btn:disabled { background: #90a4ae; cursor: not-allowed; }
+      .action-row { display: none; gap: 10px; }
+      .color-grid { display: none; grid-template-columns: repeat(4, 1fr); gap: 10px; background: white; padding: 15px; border-radius: 15px; pointer-events: auto; border: 2px solid #2196F3; }
+      .color-dot { width: 35px; height: 35px; border-radius: 50%; cursor: pointer; border: 2px solid #eee; }
+      #edit-btn { background: #FF9800; }
+      #delete-btn { background: #f44336; }
+      #close-menu-btn { background: #607D8B; }
+      #counter { position: fixed; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; background: rgba(0,0,0,0.6); color: white; padding: 6px 14px; border-radius: 20px; font-family: sans-serif; font-size: 14px; }
+    </style>
+  </head>
+  <body style="margin: 0; overflow: hidden;">
 
-  /* ---------- top status bar ---------- */
-  .status-bar{
-    position:fixed;top:0;left:0;right:0;z-index:1200;
-    display:flex;align-items:center;justify-content:space-between;
-    padding:max(12px,env(safe-area-inset-top)) 14px 12px;
-    background:linear-gradient(to bottom, rgba(0,0,0,0.65), transparent);
-    pointer-events:none;
-  }
-  .status-pill{
-    display:flex;align-items:center;gap:8px;
-    background:rgba(33,31,26,0.85);color:#fff;
-    padding:7px 14px 7px 10px;border-radius:999px;
-    font-size:13px;font-weight:600;letter-spacing:.2px;
-    pointer-events:auto;backdrop-filter:blur(6px);
-    border:1px solid var(--panel-line);
-  }
-  .status-dot{width:9px;height:9px;border-radius:50%;background:var(--danger);transition:background .25s, box-shadow .25s;flex:none;}
-  .status-dot.found{background:var(--ok);box-shadow:0 0 8px var(--ok);}
-  .status-dot.searching{animation:pulse 1.1s ease-in-out infinite;}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+    <div id="counter">0 / 12 notas</div>
 
-  .icon-btn{
-    pointer-events:auto;width:40px;height:40px;border-radius:50%;
-    background:rgba(33,31,26,0.85);border:1px solid var(--panel-line);
-    color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;
-    cursor:pointer;backdrop-filter:blur(6px);
-  }
-  .icon-btn:active{transform:scale(.92);}
-  .top-actions{display:flex;gap:10px;pointer-events:none;}
-
-  /* ---------- scanning hint ---------- */
-  .scan-hint{
-    position:fixed;left:50%;top:46%;transform:translate(-50%,-50%);
-    z-index:1100;text-align:center;color:#fff;pointer-events:none;
-    transition:opacity .3s; font-weight:600; text-shadow:0 2px 8px rgba(0,0,0,.6);
-  }
-  .scan-hint .frame{
-    width:170px;height:170px;margin:0 auto 14px;border-radius:18px;
-    border:3px dashed rgba(255,255,255,0.55);position:relative;
-    animation:scanfloat 2.4s ease-in-out infinite;
-  }
-  .scan-hint .frame::before{
-    content:'';position:absolute;left:8%;right:8%;height:2px;
-    background:linear-gradient(90deg, transparent, var(--accent), transparent);
-    top:50%;animation:scanline 1.8s linear infinite;
-  }
-  @keyframes scanfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-  @keyframes scanline{0%{top:6%}50%{top:94%}100%{top:6%}}
-  .scan-hint p{margin:4px 0;font-size:14.5px;max-width:280px;}
-  .scan-hint .sub{font-weight:400;opacity:.85;font-size:12.5px;}
-
-  /* ---------- bottom toolbar ---------- */
-  .ui-overlay{
-    position:fixed;left:0;right:0;bottom:0;z-index:1200;
-    display:flex;flex-direction:column;align-items:center;gap:10px;
-    padding:10px 16px max(16px,env(safe-area-inset-bottom));
-    pointer-events:none;
-    background:linear-gradient(to top, rgba(0,0,0,0.55), transparent);
-  }
-  .color-grid{
-    display:none;grid-template-columns:repeat(5,1fr);gap:10px;
-    background:var(--paper);padding:14px;border-radius:18px;
-    pointer-events:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);
-  }
-  .color-dot{width:32px;height:32px;border-radius:50%;cursor:pointer;border:2px solid rgba(0,0,0,.15);}
-  .color-dot.active{outline:3px solid var(--ink);outline-offset:2px;}
-
-  .toolbar-row{display:flex;gap:10px;pointer-events:auto;}
-  .btn{
-    padding:14px 22px;border:none;border-radius:999px;font-weight:700;font-size:14.5px;
-    cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.35);font-family:inherit;
-    display:flex;align-items:center;gap:8px;
-  }
-  .btn-main{background:var(--accent);color:#fff;}
-  .btn-main:active{background:var(--accent-dark);}
-  .btn-secondary{background:#fff;color:var(--ink);}
-  .btn-danger{background:var(--danger);color:#fff;display:none;}
-  .btn:active{transform:scale(.96);}
-
-  /* ---------- modal (text editor) ---------- */
-  .modal-back{
-    position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1400;
-    display:none;align-items:center;justify-content:center;padding:24px;
-    backdrop-filter:blur(2px);
-  }
-  .modal{
-    background:var(--paper);border-radius:20px;padding:20px;width:100%;max-width:380px;
-    box-shadow:0 20px 50px rgba(0,0,0,.5);
-  }
-  .modal h3{margin:0 0 12px;font-size:16px;color:var(--ink);}
-  .modal textarea{
-    width:100%;min-height:90px;border-radius:12px;border:2px solid rgba(0,0,0,.1);
-    padding:12px;font-size:15px;font-family:inherit;resize:vertical;background:#fffdf0;color:var(--ink);
-  }
-  .modal-actions{display:flex;gap:10px;margin-top:14px;}
-  .modal-actions .btn{flex:1;justify-content:center;}
-
-  /* ---------- settings panel ---------- */
-  .panel-back{
-    position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1400;
-    display:none;align-items:flex-end;justify-content:center;
-  }
-  .panel{
-    background:var(--panel);color:#fff;width:100%;max-width:480px;
-    border-radius:22px 22px 0 0;padding:18px 20px max(20px,env(safe-area-inset-bottom));
-  }
-  .panel h3{margin:4px 0 14px;font-size:16px;}
-  .panel-row{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:12px 0;border-bottom:1px solid var(--panel-line);font-size:14px;
-  }
-  .panel-row:last-of-type{border-bottom:none;}
-  .seg{display:flex;background:rgba(255,255,255,.08);border-radius:10px;padding:3px;}
-  .seg button{
-    border:none;background:transparent;color:#bbb;padding:7px 12px;border-radius:8px;
-    font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;
-  }
-  .seg button.active{background:var(--accent);color:#fff;}
-  .toggle{
-    width:46px;height:26px;border-radius:999px;background:#444;position:relative;cursor:pointer;border:none;flex:none;
-  }
-  .toggle.on{background:var(--ok);}
-  .toggle::after{
-    content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;
-    background:#fff;transition:left .15s;
-  }
-  .toggle.on::after{left:23px;}
-  .panel-close{width:100%;margin-top:14px;}
-  .panel-hint{font-size:12px;color:#999;margin-top:-6px;margin-bottom:8px;}
-
-  /* ---------- toast ---------- */
-  .toast{
-    position:fixed;left:50%;top:18px;transform:translateX(-50%) translateY(-60px);
-    background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;
-    z-index:1500;transition:transform .25s ease; pointer-events:none;font-weight:600;
-  }
-  .toast.show{transform:translateX(-50%) translateY(0);}
-
-  /* ---------- start / error screens ---------- */
-  .full-screen{
-    position:fixed;inset:0;z-index:2000;background:var(--panel);color:#fff;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    text-align:center;padding:32px;gap:16px;
-  }
-  .full-screen.hidden{display:none;}
-  .full-screen h1{font-size:21px;margin:0;}
-  .full-screen p{font-size:14px;color:#cfcabd;max-width:340px;line-height:1.5;margin:0;}
-  .logo-mark{
-    width:62px;height:62px;background:var(--accent);border-radius:14px;
-    transform:rotate(-6deg);box-shadow:0 8px 20px rgba(0,0,0,.4);
-  }
-  .start-btn{padding:15px 30px;font-size:15px;}
-</style>
-</head>
-<body>
-
-  <!-- START SCREEN -->
-  <div id="start-screen" class="full-screen">
-    <div class="logo-mark"></div>
-    <h1>Post-it AR Pro</h1>
-    <p>Apuntá la cámara al marcador <strong>Hiro</strong> para anclar tus notas en el espacio. Funciona de cerca, de lejos, y con poca luz.</p>
-    <button class="btn btn-main start-btn" onclick="app.start()">Iniciar cámara</button>
-    <p class="panel-hint" style="margin-top:-6px;">¿No tenés el marcador? Buscá "AR.js Hiro marker" para imprimirlo.</p>
-  </div>
-
-  <!-- CAMERA ERROR SCREEN -->
-  <div id="error-screen" class="full-screen hidden">
-    <div class="logo-mark" style="background:var(--danger);"></div>
-    <h1 id="error-title">No pudimos acceder a la cámara</h1>
-    <p id="error-msg">Revisá que le diste permiso de cámara a esta página y que ningún otro programa la esté usando.</p>
-    <button class="btn btn-main start-btn" onclick="app.start()">Reintentar</button>
-  </div>
-
-  <!-- STATUS BAR -->
-  <div class="status-bar" id="status-bar" style="display:none;">
-    <div class="status-pill">
-      <span class="status-dot searching" id="status-dot"></span>
-      <span id="status-text">Buscando marcador…</span>
-    </div>
-    <div class="top-actions">
-      <button class="icon-btn" id="flash-btn" onclick="app.toggleFlash()" title="Linterna" style="display:none;">💡</button>
-      <button class="icon-btn" onclick="app.openSettings()" title="Ajustes">⚙️</button>
-    </div>
-  </div>
-
-  <!-- SCAN HINT -->
-  <div class="scan-hint" id="scan-hint" style="display:none;">
-    <div class="frame"></div>
-    <p>Apuntá al marcador Hiro</p>
-    <p class="sub">Probá acercar o alejar el celular. Con poca luz, activá la linterna 💡</p>
-  </div>
-
-  <!-- BOTTOM TOOLBAR -->
-  <div class="ui-overlay">
-    <div id="grid" class="color-grid"></div>
-    <div class="toolbar-row">
-      <button id="add-btn" class="btn btn-main" onclick="app.openNew()">＋ Nueva nota</button>
-      <button id="edit-text-btn" class="btn btn-secondary" style="display:none;" onclick="app.openTextEditor()">✎ Texto</button>
-      <button id="delete-btn" class="btn btn-danger" onclick="app.deleteCurrent()">🗑 Eliminar</button>
-    </div>
-  </div>
-
-  <!-- TEXT MODAL -->
-  <div class="modal-back" id="text-modal">
-    <div class="modal">
-      <h3>Texto de la nota</h3>
-      <textarea id="text-input" maxlength="160" placeholder="Escribí algo…"></textarea>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="app.closeTextEditor()">Cancelar</button>
-        <button class="btn btn-main" onclick="app.saveText()">Guardar</button>
+    <div class="ui-overlay">
+      <div id="grid" class="color-grid">
+        <div class="color-dot" style="background: #FFEB3B" onclick="app.setColor('#FFEB3B')"></div>
+        <div class="color-dot" style="background: #FF5252" onclick="app.setColor('#FF5252')"></div>
+        <div class="color-dot" style="background: #69F0AE" onclick="app.setColor('#69F0AE')"></div>
+        <div class="color-dot" style="background: #40C4FF" onclick="app.setColor('#40C4FF')"></div>
       </div>
+      <div id="action-row" class="action-row">
+        <button id="edit-btn" class="btn" onclick="app.editText()">Editar Texto</button>
+        <button id="delete-btn" class="btn" onclick="app.deleteCurrent()">Eliminar</button>
+        <button id="close-menu-btn" class="btn" onclick="app.hideMenus()">Cerrar</button>
+      </div>
+      <button id="add-btn" class="btn" onclick="app.openNew()">+ Nueva Nota</button>
     </div>
-  </div>
 
-  <!-- SETTINGS PANEL -->
-  <div class="panel-back" id="settings-panel">
-    <div class="panel">
-      <h3>Ajustes de cámara</h3>
+    <script>
+      const app = {
+        notes: JSON.parse(localStorage.getItem('ar-notes-v7') || '[]'),
+        selectedId: null,
+        marker: null,
+        MAX_NOTES: 12,
+        WRAP_COUNT: 18, // caracteres aprox. por línea antes de saltar
 
-      <div class="panel-row">
-        <span>Calidad / alcance de detección</span>
-        <div class="seg" id="quality-seg">
-          <button data-q="low">Básica</button>
-          <button data-q="medium">Media</button>
-          <button data-q="high">Alta</button>
-        </div>
-      </div>
-      <p class="panel-hint">Más alta = detecta el marcador más chico o más lejos, pero usa más batería.</p>
+        init: function() {
+          this.marker = document.querySelector('#ancla');
+          this.marker.addEventListener('markerFound', () => this.render());
+          this.updateCounter();
+        },
 
-      <div class="panel-row">
-        <span>Cámara</span>
-        <div class="seg" id="camera-seg">
-          <button data-c="environment">Trasera</button>
-          <button data-c="user">Frontal</button>
-        </div>
-      </div>
+        // Calcula una grilla que se auto-ajusta según la cantidad total de notas (hasta 12)
+        calculateLayout: function(total) {
+          const cols = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(total))));
+          const rows = Math.ceil(total / cols);
+          return { cols, rows };
+        },
 
-      <div class="panel-row">
-        <span>Linterna (poca luz)</span>
-        <button class="toggle" id="flash-toggle" onclick="app.toggleFlash()"></button>
-      </div>
+        calculateGridPosition: function(index, total) {
+          const { cols, rows } = this.calculateLayout(total);
+          const spacingX = 1.75;
+          const spacingZ = 1.75;
+          const x = (index % cols) * spacingX - ((cols - 1) * spacingX) / 2;
+          const z = Math.floor(index / cols) * spacingZ - ((rows - 1) * spacingZ) / 2;
+          return { x: x, y: 0.25, z: z };
+        },
 
-      <div class="panel-row">
-        <span>Borrar todas las notas</span>
-        <button class="icon-btn" style="background:var(--danger);" onclick="app.clearAll()">🗑</button>
-      </div>
+        recalculatePositions: function() {
+          const total = this.notes.length;
+          this.notes = this.notes.map((n, index) => ({
+            ...n,
+            pos: this.calculateGridPosition(index, total)
+          }));
+        },
 
-      <button class="btn btn-main panel-close" onclick="app.closeSettings()">Listo</button>
-    </div>
-  </div>
+        // Estima cuántas líneas ocupará el texto para dimensionar el post-it
+        estimateSize: function(text) {
+          const charsPerLine = this.WRAP_COUNT;
+          const lines = Math.max(1, Math.ceil(text.length / charsPerLine));
+          const width = 1.375;
+          const height = Math.min(2.2, Math.max(0.875, 0.45 + lines * 0.24));
+          return { width, height, lines };
+        },
 
-  <div class="toast" id="toast"></div>
+        updateCounter: function() {
+          document.getElementById('counter').textContent = `${this.notes.length} / ${this.MAX_NOTES} notas`;
+          document.getElementById('add-btn').disabled = this.notes.length >= this.MAX_NOTES;
+        },
 
-  <!-- A-Frame scene container; built dynamically so we can change camera quality on the fly -->
-  <div id="scene-mount"></div>
-
-<script>
-(function(){
-
-  const COLORS = ['#FFEB3B','#FF8A65','#69F0AE','#40C4FF','#CE93D8','#FFFFFF','#FF5252','#B2FF59','#80DEEA','#F48FB1'];
-  const QUALITY_PRESETS = {
-    low:    { w: 640,  h: 480,  label:'Básica' },
-    medium: { w: 1280, h: 960,  label:'Media'  },
-    high:   { w: 1920, h: 1080, label:'Alta'   }
-  };
-  const STORAGE_KEY = 'postit-ar-notes-v2';
-  const SETTINGS_KEY = 'postit-ar-settings-v2';
-
-  function safeLoad(key, fallback){
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch(e){
-      console.warn('No se pudo leer', key, e);
-      return fallback;
-    }
-  }
-  function safeSave(key, value){
-    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
-    catch(e){ console.warn('No se pudo guardar', key, e); return false; }
-  }
-
-  const app = {
-    notes: safeLoad(STORAGE_KEY, []),
-    settings: Object.assign({ quality:'medium', facingMode:'environment', flashOn:false }, safeLoad(SETTINGS_KEY, {})),
-    selectedId: null,
-    marker: null,
-    sceneEl: null,
-    videoTrack: null,
-    markerVisible: false,
-    saveTimer: null,
-
-    // ---------------- lifecycle ----------------
-
-    start: async function(){
-      document.getElementById('error-screen').classList.add('hidden');
-      document.getElementById('start-screen').classList.add('hidden');
-      document.getElementById('status-bar').style.display = 'flex';
-      document.getElementById('scan-hint').style.display = 'block';
-      document.getElementById('status-text').textContent = 'Iniciando cámara…';
-
-      // We let AR.js itself request the camera (only one getUserMedia call).
-      // Asking for permission ourselves first and then handing off to AR.js
-      // is a common source of a "frozen black video" on phones, because the
-      // camera hardware doesn't always release in time for the second request.
-      this.buildScene();
-      this.watchVideo();
-    },
-
-    // Polls the real <video> element AR.js creates. If after a few seconds
-    // it never receives actual frames (videoWidth stays 0), something failed
-    // silently (permission denied without a thrown error, camera in use by
-    // another app, unsupported resolution, etc) — show a clear message
-    // instead of leaving the screen dark with no explanation.
-    watchVideo: function(){
-      clearInterval(this._watchdog);
-      let elapsed = 0;
-      this._watchdog = setInterval(() => {
-        const video = document.querySelector('video');
-        elapsed += 500;
-        if(video && video.videoWidth > 0){
-          clearInterval(this._watchdog);
-          return;
-        }
-        if(elapsed >= 6000){
-          clearInterval(this._watchdog);
-          if(!this.markerVisible){
-            document.getElementById('error-screen').classList.remove('hidden');
-            document.getElementById('error-title').textContent = 'La cámara no muestra imagen';
-            document.getElementById('error-msg').textContent =
-              video
-                ? 'El navegador abrió la cámara pero no llegan imágenes. Cerrá otras apps/pestañas que la estén usando, o probá bajar la calidad en Ajustes ⚙️ y volver a intentar.'
-                : 'No se detectó ninguna cámara activa. Si tu navegador te pidió permiso, asegurate de aceptar "Permitir". En iPhone, esto solo funciona en Safari (no en Chrome/Instagram in-app).';
+        openNew: function() {
+          if (this.notes.length >= this.MAX_NOTES) {
+            alert(`Alcanzaste el máximo de ${this.MAX_NOTES} notas. Eliminá alguna para agregar otra.`);
+            return;
           }
+          const text = prompt("Texto de la nota:");
+          if (!text) return;
+          const id = 'note-' + Date.now();
+          this.notes.push({ id: id, text: text, color: '#FFEB3B', pos: { x: 0, y: 0.25, z: 0 } });
+          this.recalculatePositions();
+          this.save();
+        },
+
+        editText: function() {
+          const note = this.notes.find(n => n.id === this.selectedId);
+          if (!note) return;
+          const newText = prompt("Editar texto de la nota:", note.text);
+          if (newText === null) return; // cancelado
+          if (newText.trim() === '') {
+            alert("El texto no puede estar vacío.");
+            return;
+          }
+          note.text = newText;
+          this.save();
+        },
+
+        select: function(id) {
+          this.selectedId = id;
+          document.getElementById('grid').style.display = 'grid';
+          document.getElementById('action-row').style.display = 'flex';
+        },
+
+        setColor: function(color) {
+          const note = this.notes.find(n => n.id === this.selectedId);
+          if (note) note.color = color;
+          this.save();
+        },
+
+        deleteCurrent: function() {
+          this.notes = this.notes.filter(n => n.id !== this.selectedId);
+          this.recalculatePositions();
+          this.hideMenus();
+          this.save();
+        },
+
+        hideMenus: function() {
+          this.selectedId = null;
+          document.getElementById('grid').style.display = 'none';
+          document.getElementById('action-row').style.display = 'none';
+        },
+
+        save: function() {
+          localStorage.setItem('ar-notes-v7', JSON.stringify(this.notes));
+          this.updateCounter();
+          this.render();
+        },
+
+        render: function() {
+          const oldNotes = this.marker.querySelectorAll('.nota-virtual');
+          oldNotes.forEach(n => n.parentNode.removeChild(n));
+
+          this.notes.forEach(data => {
+            const size = this.estimateSize(data.text);
+
+            const container = document.createElement('a-entity');
+            container.setAttribute('class', 'nota-virtual clickable');
+            container.setAttribute('position', data.pos);
+            container.setAttribute('look-at', '[camera]');
+
+            const bg = document.createElement('a-plane');
+            bg.setAttribute('width', size.width);
+            bg.setAttribute('height', size.height);
+            bg.setAttribute('color', data.color);
+            bg.setAttribute('material', 'shader: flat; side: double');
+
+            const txt = document.createElement('a-text');
+            txt.setAttribute('value', data.text);
+            txt.setAttribute('align', 'center');
+            txt.setAttribute('baseline', 'center');
+            txt.setAttribute('color', '#000');
+            txt.setAttribute('width', size.width * 2.7);
+            txt.setAttribute('wrap-count', this.WRAP_COUNT);
+            txt.setAttribute('position', '0 0 0.01');
+
+            container.addEventListener('mousedown', () => this.select(data.id));
+
+            container.appendChild(bg);
+            container.appendChild(txt);
+            this.marker.appendChild(container);
+          });
         }
-      }, 500);
-    },
+      };
+      window.onload = () => app.init();
+    </script>
 
-    buildScene: function(){
-      const q = QUALITY_PRESETS[this.settings.quality] || QUALITY_PRESETS.medium;
-      const mount = document.getElementById('scene-mount');
-      mount.innerHTML = '';
-
-      const scene = document.createElement('a-scene');
-      scene.setAttribute('embedded', '');
-      scene.setAttribute('vr-mode-ui', 'enabled: false');
-      scene.setAttribute('arjs',
-        `sourceType: webcam; ` +
-        `sourceWidth:${q.w}; sourceHeight:${q.h}; ` +
-        `displayWidth:${q.w}; displayHeight:${q.h}; ` +
-        `facingMode:${this.settings.facingMode}; ` +
-        `debugUIEnabled:false; ` +
-        `detectionMode:mono_and_matrix; ` +
-        `matrixCodeType:3x3; ` +
-        `maxDetectionRate:30; ` +
-        `canvasWidth:${q.w}; canvasHeight:${q.h}; ` +
-        `imageSmoothingEnabled:false;`
-      );
-      scene.setAttribute('cursor', 'rayOrigin: mouse; fuse: false');
-      scene.setAttribute('raycaster', 'objects: .clickable');
-
-      const marker = document.createElement('a-marker');
-      marker.setAttribute('preset', 'hiro');
-      marker.setAttribute('id', 'ancla');
-      marker.setAttribute('smooth', 'true');
-      marker.setAttribute('smoothCount', '8');
-      marker.setAttribute('smoothTolerance', '0.015');
-      marker.setAttribute('smoothThreshold', '4');
-      marker.setAttribute('raycaster', 'objects: .clickable');
-
-      const guide = document.createElement('a-plane');
-      guide.setAttribute('rotation', '-90 0 0');
-      guide.setAttribute('width', '6.25');
-      guide.setAttribute('height', '6.25');
-      guide.setAttribute('color', '#fff');
-      guide.setAttribute('opacity', '0.06');
-      guide.setAttribute('material', 'shader: flat; side: double');
-      marker.appendChild(guide);
-
-      scene.appendChild(marker);
-      const camera = document.createElement('a-entity');
-      camera.setAttribute('camera', '');
-      scene.appendChild(camera);
-      mount.appendChild(scene);
-
-      this.sceneEl = scene;
-      this.marker = marker;
-
-      marker.addEventListener('markerFound', () => this.onMarkerFound());
-      marker.addEventListener('markerLost', () => this.onMarkerLost());
-
-      scene.addEventListener('loaded', () => {
-        this.render();
-        // Grab the underlying <video> so we can control flash/torch and
-        // attempt to nudge exposure for low-light conditions.
-        setTimeout(() => this.hookVideoTrack(), 800);
-      });
-
-      scene.addEventListener('camera-error', () => {
-        clearInterval(this._watchdog);
-        document.getElementById('error-screen').classList.remove('hidden');
-        document.getElementById('error-title').textContent = 'No pudimos acceder a la cámara';
-        document.getElementById('error-msg').textContent = 'Se perdió la conexión con la cámara, o el navegador no te dejó usarla. Revisá los permisos y reintentá.';
-      });
-    },
-
-    hookVideoTrack: function(){
-      const video = document.querySelector('#scene-mount video');
-      if(!video || !video.srcObject) return;
-      const tracks = video.srcObject.getVideoTracks();
-      if(!tracks.length) return;
-      this.videoTrack = tracks[0];
-
-      const caps = this.videoTrack.getCapabilities ? this.videoTrack.getCapabilities() : {};
-      // Show flash button only if the device actually supports torch (mobile rear cameras mostly).
-      document.getElementById('flash-btn').style.display = caps.torch ? 'flex' : 'none';
-
-      // Best-effort: ask for continuous auto exposure/focus, which helps a lot in dim rooms.
-      const advanced = [];
-      if(caps.exposureMode && caps.exposureMode.includes('continuous')) advanced.push({exposureMode:'continuous'});
-      if(caps.focusMode && caps.focusMode.includes('continuous')) advanced.push({focusMode:'continuous'});
-      if(caps.whiteBalanceMode && caps.whiteBalanceMode.includes('continuous')) advanced.push({whiteBalanceMode:'continuous'});
-      if(advanced.length){
-        this.videoTrack.applyConstraints({advanced}).catch(()=>{});
-      }
-      if(this.settings.flashOn && caps.torch){
-        this.videoTrack.applyConstraints({advanced:[{torch:true}]}).catch(()=>{});
-      }
-    },
-
-    toggleFlash: function(){
-      if(!this.videoTrack){ this.showToast('Esperá a que la cámara termine de cargar'); return; }
-      const caps = this.videoTrack.getCapabilities ? this.videoTrack.getCapabilities() : {};
-      if(!caps.torch){ this.showToast('Este dispositivo no tiene linterna controlable'); return; }
-      this.settings.flashOn = !this.settings.flashOn;
-      this.videoTrack.applyConstraints({advanced:[{torch:this.settings.flashOn}]}).catch(()=>{
-        this.showToast('No se pudo activar la linterna');
-        this.settings.flashOn = false;
-      });
-      this.persistSettings();
-      this.applySettingsUI();
-    },
-
-    onMarkerFound: function(){
-      clearInterval(this._watchdog);
-      this.markerVisible = true;
-      document.getElementById('scan-hint').style.display = 'none';
-      const dot = document.getElementById('status-dot');
-      dot.classList.add('found'); dot.classList.remove('searching');
-      document.getElementById('status-text').textContent = 'Marcador detectado';
-    },
-
-    onMarkerLost: function(){
-      this.markerVisible = false;
-      document.getElementById('scan-hint').style.display = 'block';
-      const dot = document.getElementById('status-dot');
-      dot.classList.remove('found'); dot.classList.add('searching');
-      document.getElementById('status-text').textContent = 'Buscando marcador…';
-      this.hideMenus();
-    },
-
-    // ---------------- settings panel ----------------
-
-    openSettings: function(){
-      document.getElementById('settings-panel').style.display = 'flex';
-    },
-    closeSettings: function(){
-      document.getElementById('settings-panel').style.display = 'none';
-    },
-    applySettingsUI: function(){
-      document.querySelectorAll('#quality-seg button').forEach(b=>{
-        b.classList.toggle('active', b.dataset.q === this.settings.quality);
-      });
-      document.querySelectorAll('#camera-seg button').forEach(b=>{
-        b.classList.toggle('active', b.dataset.c === this.settings.facingMode);
-      });
-      document.getElementById('flash-toggle').classList.toggle('on', this.settings.flashOn);
-      document.getElementById('flash-btn').style.opacity = this.settings.flashOn ? '1' : '.7';
-    },
-    persistSettings: function(){
-      safeSave(SETTINGS_KEY, this.settings);
-    },
-    setQuality: function(q){
-      if(q === this.settings.quality) return;
-      this.settings.quality = q;
-      this.persistSettings();
-      this.showToast('Reiniciando cámara en calidad ' + QUALITY_PRESETS[q].label.toLowerCase() + '…');
-      this.buildScene();
-      this.watchVideo();
-      this.applySettingsUI();
-    },
-    setCamera: function(c){
-      if(c === this.settings.facingMode) return;
-      this.settings.facingMode = c;
-      this.persistSettings();
-      this.buildScene();
-      this.watchVideo();
-      this.applySettingsUI();
-    },
-    clearAll: function(){
-      if(!confirm('¿Eliminar todas las notas? Esta acción no se puede deshacer.')) return;
-      this.notes = [];
-      this.hideMenus();
-      this.save();
-      this.showToast('Todas las notas fueron eliminadas');
-    },
-
-    // ---------------- notes CRUD ----------------
-
-    calculateGridPosition: function(index){
-      const cols = 3, spacing = 1.625;
-      const x = (index % cols) * spacing - ((cols - 1) * spacing) / 2;
-      const z = Math.floor(index / cols) * -spacing;
-      return { x, y: 0.25, z };
-    },
-
-    openNew: function(){
-      this.pendingNewNote = true;
-      this.openTextEditor('');
-    },
-
-    openTextEditor: function(prefill){
-      const note = this.notes.find(n => n.id === this.selectedId);
-      document.getElementById('text-input').value =
-        typeof prefill === 'string' ? prefill : (note ? note.text : '');
-      document.getElementById('text-modal').style.display = 'flex';
-      setTimeout(()=> document.getElementById('text-input').focus(), 50);
-    },
-    closeTextEditor: function(){
-      document.getElementById('text-modal').style.display = 'none';
-      this.pendingNewNote = false;
-    },
-    saveText: function(){
-      const text = document.getElementById('text-input').value.trim();
-      if(!text){ this.showToast('Escribí algo primero'); return; }
-
-      if(this.pendingNewNote){
-        const id = 'note-' + Date.now();
-        const pos = this.calculateGridPosition(this.notes.length);
-        this.notes.push({ id, text, color: COLORS[0], pos });
-        this.pendingNewNote = false;
-        this.select(id);
-      } else if(this.selectedId){
-        const note = this.notes.find(n => n.id === this.selectedId);
-        if(note) note.text = text;
-      }
-      document.getElementById('text-modal').style.display = 'none';
-      this.save();
-      this.showToast('Nota guardada');
-    },
-
-    select: function(id){
-      this.selectedId = id;
-      const note = this.notes.find(n => n.id === id);
-      if(!note) return;
-      document.getElementById('grid').style.display = 'grid';
-      document.getElementById('delete-btn').style.display = 'block';
-      document.getElementById('edit-text-btn').style.display = 'block';
-      document.getElementById('add-btn').style.display = 'none';
-      this.highlightColor(note.color);
-    },
-
-    setColor: function(color){
-      const note = this.notes.find(n => n.id === this.selectedId);
-      if(note) note.color = color;
-      this.highlightColor(color);
-      this.save();
-    },
-    highlightColor: function(color){
-      document.querySelectorAll('.color-dot').forEach(d=>{
-        d.classList.toggle('active', d.dataset.color === color);
-      });
-    },
-
-    deleteCurrent: function(){
-      this.notes = this.notes.filter(n => n.id !== this.selectedId);
-      this.notes = this.notes.map((n, i) => ({...n, pos: this.calculateGridPosition(i)}));
-      this.hideMenus();
-      this.save();
-      this.showToast('Nota eliminada');
-    },
-
-    hideMenus: function(){
-      this.selectedId = null;
-      document.getElementById('grid').style.display = 'none';
-      document.getElementById('delete-btn').style.display = 'none';
-      document.getElementById('edit-text-btn').style.display = 'none';
-      document.getElementById('add-btn').style.display = 'flex';
-    },
-
-    save: function(){
-      clearTimeout(this.saveTimer);
-      this.saveTimer = setTimeout(() => {
-        const ok = safeSave(STORAGE_KEY, this.notes);
-        if(!ok) this.showToast('No se pudo guardar (memoria llena)');
-      }, 150);
-      this.render();
-    },
-
-    render: function(){
-      if(!this.marker) return;
-      const old = this.marker.querySelectorAll('.nota-virtual');
-      old.forEach(n => n.parentNode.removeChild(n));
-
-      this.notes.forEach(data => {
-        const container = document.createElement('a-entity');
-        container.setAttribute('class', 'nota-virtual clickable');
-        container.setAttribute('position', `${data.pos.x} ${data.pos.y} ${data.pos.z}`);
-        container.setAttribute('look-at', '[camera]');
-
-        // subtle drop-shadow card behind the note for legibility on any background
-        const shadow = document.createElement('a-plane');
-        shadow.setAttribute('width', '1.45');
-        shadow.setAttribute('height', '0.95');
-        shadow.setAttribute('color', '#000');
-        shadow.setAttribute('opacity', '0.18');
-        shadow.setAttribute('position', '0.02 -0.02 -0.01');
-        shadow.setAttribute('material', 'shader: flat; side: double');
-
-        const bg = document.createElement('a-plane');
-        bg.setAttribute('width', '1.375');
-        bg.setAttribute('height', '0.875');
-        bg.setAttribute('color', data.color);
-        bg.setAttribute('material', 'shader: flat; side: double');
-
-        const txt = document.createElement('a-text');
-        txt.setAttribute('value', data.text);
-        txt.setAttribute('align', 'center');
-        txt.setAttribute('color', this.readableTextColor(data.color));
-        txt.setAttribute('width', '3.6');
-        txt.setAttribute('wrap-count', '18');
-        txt.setAttribute('position', '0 0 0.01');
-
-        container.addEventListener('mousedown', (e) => { e.stopPropagation(); this.select(data.id); });
-
-        container.appendChild(shadow);
-        container.appendChild(bg);
-        container.appendChild(txt);
-        this.marker.appendChild(container);
-      });
-    },
-
-    readableTextColor: function(hex){
-      // simple luminance check so text stays legible on light vs dark sticky-note colors
-      const c = hex.replace('#','');
-      const r = parseInt(c.substr(0,2),16), g = parseInt(c.substr(2,2),16), b = parseInt(c.substr(4,2),16);
-      const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
-      return lum > 0.6 ? '#1C1B17' : '#FFFFFF';
-    },
-
-    showToast: function(msg){
-      const t = document.getElementById('toast');
-      t.textContent = msg;
-      t.classList.add('show');
-      clearTimeout(this._toastTimer);
-      this._toastTimer = setTimeout(()=> t.classList.remove('show'), 1800);
-    },
-
-    // ---------------- init ----------------
-
-    init: function(){
-      this.applySettingsUI();
-      // build color grid
-      const grid = document.getElementById('grid');
-      COLORS.forEach(c=>{
-        const dot = document.createElement('div');
-        dot.className = 'color-dot';
-        dot.style.background = c;
-        dot.dataset.color = c;
-        dot.onclick = () => this.setColor(c);
-        grid.appendChild(dot);
-      });
-
-      document.querySelectorAll('#quality-seg button').forEach(b=>{
-        b.onclick = () => this.setQuality(b.dataset.q);
-      });
-      document.querySelectorAll('#camera-seg button').forEach(b=>{
-        b.onclick = () => this.setCamera(b.dataset.c);
-      });
-
-      document.getElementById('settings-panel').addEventListener('click', (e)=>{
-        if(e.target.id === 'settings-panel') this.closeSettings();
-      });
-      document.getElementById('text-modal').addEventListener('click', (e)=>{
-        if(e.target.id === 'text-modal') this.closeTextEditor();
-      });
-
-      window.addEventListener('beforeunload', ()=> safeSave(STORAGE_KEY, this.notes));
-    }
-  };
-
-  window.app = app;
-  window.addEventListener('load', () => app.init());
-})();
-</script>
-</body>
+    <a-scene embedded 
+             arjs="sourceType: webcam; 
+                   sourceWidth:1280; sourceHeight:960; 
+                   displayWidth: 1280; displayHeight: 960;
+                   debugUIEnabled: false; 
+                   detectionMode: mono_and_matrix; 
+                   matrixCodeType: 3x3;
+                   imageSmoothingEnabled: false;
+                   canvasWidth: 1280; canvasHeight: 960;" 
+             cursor="rayOrigin: mouse; fuse: false" 
+             raycaster="objects: .clickable">
+      
+      <a-marker preset="hiro" id="ancla" smooth="true" smoothCount="5" smoothTolerance="0.01" smoothThreshold="2">
+          <a-sphere radius="0.0625" color="red"></a-sphere>
+          <a-plane rotation="-90 0 0" width="6.25" height="6.25" color="#fff" opacity="0.1"></a-plane>
+      </a-marker>
+      
+      <a-entity camera></a-entity>
+    </a-scene>
+  </body>
 </html>
